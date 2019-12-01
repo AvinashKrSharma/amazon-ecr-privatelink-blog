@@ -1,7 +1,6 @@
 Description:
-  This template deploys a VPC, with a pair of public and private subnets spread
-  across two Availability Zones. It deploys an Internet Gateway, with a default
-  route on the public subnets. 
+  This template deploys a VPC, with a pair of private subnets spread
+  across two Availability Zones.
 
 Parameters:
   VpcCIDR:
@@ -9,13 +8,13 @@ Parameters:
     Type: String
     Default: 10.192.0.0/16
 
-  PublicSubnetOneCIDR:
-    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+  SubnetOneCIDR:
+    Description: Please enter the IP range (CIDR notation) for the subnet in the first Availability Zone
     Type: String
     Default: 10.192.10.0/24
 
-  PublicSubnetTwoCIDR:
-    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+  SubnetTwoCIDR:
+    Description: Please enter the IP range (CIDR notation) for the subnet in the second Availability Zone
     Type: String
     Default: 10.192.11.0/24
 
@@ -36,37 +35,6 @@ Resources:
       CidrBlock: !Ref VpcCIDR
       EnableDnsSupport: true
       EnableDnsHostnames: true
-
-  InternetGateway:
-    Type: AWS::EC2::InternetGateway
-
-  InternetGatewayAttachment:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      InternetGatewayId: !Ref InternetGateway
-      VpcId: !Ref VPC
-
-  PublicSubnetOne:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone:
-         Fn::Select:
-         - 0
-         - Fn::GetAZs: {Ref: 'AWS::Region'}
-      CidrBlock: !Ref PublicSubnetOneCIDR
-      MapPublicIpOnLaunch: true
-
-  PublicSubnetTwo:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone:
-         Fn::Select:
-         - 1
-         - Fn::GetAZs: {Ref: 'AWS::Region'}
-      CidrBlock: !Ref PublicSubnetTwoCIDR
-      MapPublicIpOnLaunch: true
 
   PrivateSubnetOne:
     Type: AWS::EC2::Subnet
@@ -90,31 +58,6 @@ Resources:
       CidrBlock: !Ref PrivateSubnetTwoCIDR
       MapPublicIpOnLaunch: false
 
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-
-  DefaultPublicRoute:
-    Type: AWS::EC2::Route
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-
-  PublicSubnetOneRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnetOne
-
-  PublicSubnetTwoRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnetTwo
-
   PrivateRouteTableOne:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -137,23 +80,6 @@ Resources:
       RouteTableId: !Ref PrivateRouteTableTwo
       SubnetId: !Ref PrivateSubnetTwo
 
-  ApplicationHostSecurityGroup:
-      Type: AWS::EC2::SecurityGroup
-      Properties:
-          GroupDescription: Allow SSH from Management VPC
-          VpcId: !Ref VPC
-          SecurityGroupEgress:
-            -
-              IpProtocol: tcp
-              FromPort: 80
-              ToPort: 80
-              CidrIp: 0.0.0.0/0
-            -
-              IpProtocol: tcp
-              FromPort: 443
-              ToPort: 443
-              CidrIp: 0.0.0.0/0
-
   VPCESecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -165,12 +91,8 @@ Resources:
           FromPort: 443
           IpProtocol: tcp
           ToPort: 443
-        - SourceSecurityGroupId: !GetAtt ApplicationHostSecurityGroup.GroupId
-          FromPort: 443
-          IpProtocol: tcp
-          ToPort: 443
 
-  # Gateway and VPCE PrivateLink 
+  # Gateway and VPCE PrivateLink
   S3Endpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -185,16 +107,15 @@ Resources:
             Resource:
               - '*'
       RouteTableIds:
-        - !Ref PublicRouteTable
         - !Ref PrivateRouteTableOne
         - !Ref PrivateRouteTableTwo
-      ServiceName: 
-        Fn::Join: 
+      ServiceName:
+        Fn::Join:
         - ''
         - - 'com.amazonaws.'
           - !Ref 'AWS::Region'
           - '.s3'
-      
+
   ECRApiEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -204,15 +125,15 @@ Resources:
       SecurityGroupIds:
         - !GetAtt VPCESecurityGroup.GroupId
       SubnetIds:
-        - !Ref PublicSubnetOne
-        - !Ref PublicSubnetTwo
-      ServiceName: 
-        Fn::Join: 
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+      ServiceName:
+        Fn::Join:
         - ''
         - - 'com.amazonaws.'
           - !Ref 'AWS::Region'
           - '.ecr.api'
-    
+
   ECRDKRApiEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -222,86 +143,14 @@ Resources:
       SecurityGroupIds:
         - !GetAtt VPCESecurityGroup.GroupId
       SubnetIds:
-        - !Ref PublicSubnetOne
-        - !Ref PublicSubnetTwo
-      ServiceName: 
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+      ServiceName:
         Fn::Join:
         - ''
         - - 'com.amazonaws.'
           - !Ref 'AWS::Region'
           - '.ecr.dkr'
-
-  SSMApiEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SecurityGroupIds:
-        - !GetAtt VPCESecurityGroup.GroupId
-      SubnetIds:
-        - !Ref PublicSubnetOne
-        - !Ref PublicSubnetTwo
-      ServiceName: 
-        Fn::Join:
-        - ''
-        - - 'com.amazonaws.'
-          - !Ref 'AWS::Region'
-          - '.ssm'
- 
-  SSMMessagesApiEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SecurityGroupIds:
-        - !GetAtt VPCESecurityGroup.GroupId
-      SubnetIds:
-        - !Ref PublicSubnetOne
-        - !Ref PublicSubnetTwo
-      ServiceName: 
-        Fn::Join:
-        - ''
-        - - 'com.amazonaws.'
-          - !Ref 'AWS::Region'
-          - '.ssmmessages'
- 
-  EC2ApiEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SecurityGroupIds:
-        - !GetAtt VPCESecurityGroup.GroupId
-      SubnetIds:
-        - !Ref PublicSubnetOne
-        - !Ref PublicSubnetTwo
-      ServiceName: 
-        Fn::Join:
-        - ''
-        - - 'com.amazonaws.'
-          - !Ref 'AWS::Region'
-          - '.ec2'
-
-  EC2MessagesApiEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SecurityGroupIds:
-        - !GetAtt VPCESecurityGroup.GroupId
-      SubnetIds:
-        - !Ref PublicSubnetOne
-        - !Ref PublicSubnetTwo
-      ServiceName: 
-        Fn::Join:
-        - ''
-        - - 'com.amazonaws.'
-          - !Ref 'AWS::Region'
-          - '.ec2messages'
 
   LogsApiEndpoint:
     Type: AWS::EC2::VPCEndpoint
@@ -312,9 +161,9 @@ Resources:
       SecurityGroupIds:
         - !GetAtt VPCESecurityGroup.GroupId
       SubnetIds:
-        - !Ref PublicSubnetOne
-        - !Ref PublicSubnetTwo
-      ServiceName: 
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+      ServiceName:
         Fn::Join:
         - ''
         - - 'com.amazonaws.'
@@ -331,13 +180,13 @@ Resources:
       GroupDescription: Access to the Fargate containers
       VpcId: !Ref 'VPC'
 
-  EcsSecurityGroupIngressFromPublicALB:
+  EcsSecurityGroupIngressFromALB:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
-      Description: Ingress from the public ALB
+      Description: Ingress from the ALB
       GroupId: !Ref 'FargateContainerSecurityGroup'
       IpProtocol: -1
-      SourceSecurityGroupId: !Ref 'PublicLoadBalancerSG'
+      SourceSecurityGroupId: !Ref 'LoadBalancerSG'
 
   EcsSecurityGroupIngressFromSelf:
     Type: AWS::EC2::SecurityGroupIngress
@@ -347,43 +196,39 @@ Resources:
       IpProtocol: -1
       SourceSecurityGroupId: !Ref 'FargateContainerSecurityGroup'
 
-  # A public facing load balancer
-  PublicLoadBalancerSG:
+  LoadBalancerSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Access to the public facing load balancer
+      GroupDescription: Access to the facing load balancer
       VpcId: !Ref 'VPC'
-      SecurityGroupIngress:
-          # Allow access to ALB from anywhere on the internet
-          - CidrIp: 0.0.0.0/0
-            IpProtocol: -1
-  
-  PublicLoadBalancer:
+
+  LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Scheme: internet-facing
+      Scheme: internal
       LoadBalancerAttributes:
       - Key: idle_timeout.timeout_seconds
         Value: '30'
       Subnets:
-        # The load balancer is placed into the public subnets, so that traffic
+        # The load balancer is placed into the subnets, so that traffic
         # from the internet can reach the load balancer directly via the internet gateway
-        - !Ref PublicSubnetOne
-        - !Ref PublicSubnetTwo
-      SecurityGroups: [!Ref 'PublicLoadBalancerSG']
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+      SecurityGroups: [!Ref 'LoadBalancerSG']
 
   # A dummy target group is used to setup the ALB to just drop traffic
   # The premise is that other stacks may add target groups, rules
-  
-  DummyTargetGroupPublic:
+
+  DummyTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       HealthCheckIntervalSeconds: 6
-      HealthCheckPath: /
+      HealthCheckPath: /status
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 5
+      HealthCheckPort: 8080
       HealthyThresholdCount: 2
-      Name: 
+      Name:
         Fn::Join:
         - '-'
         - - !Ref 'AWS::StackName'
@@ -394,15 +239,15 @@ Resources:
       VpcId: !Ref 'VPC'
 
   # Listener with default action to forward to drop.
-  PublicLoadBalancerListener:
+  LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     DependsOn:
-      - PublicLoadBalancer
+      - LoadBalancer
     Properties:
       DefaultActions:
-        - TargetGroupArn: !Ref 'DummyTargetGroupPublic'
+        - TargetGroupArn: !Ref 'DummyTargetGroup'
           Type: 'forward'
-      LoadBalancerArn: !Ref 'PublicLoadBalancer'
+      LoadBalancerArn: !Ref 'LoadBalancer'
       Port: 80
       Protocol: HTTP
 
@@ -484,95 +329,51 @@ Outputs:
           - - !Ref 'AWS::StackName'
             - 'VPCId'
 
-  PublicSubnetOne:
-    Description: A reference to the public subnet in the 1st Availability Zone
-    Value: !Ref PublicSubnetOne
-    Export:
-      Name: 
-        Fn::Join:
-          - ':'
-          - - !Ref 'AWS::StackName'
-            - 'PublicSubnetOne' 
-
-  PublicSubnetTwo:
-    Description: A reference to the public subnet in the 2nd Availability Zone
-    Value: !Ref PublicSubnetTwo
-    Export:
-      Name: 
-        Fn::Join:
-          - ':'
-          - - !Ref 'AWS::StackName'
-            - 'PublicSubnetTwo' 
-
   PrivateSubnetOne:
     Description: A reference to the private subnet in the 1st Availability Zone
     Value: !Ref PrivateSubnetOne
     Export:
-      Name: 
+      Name:
         Fn::Join:
           - ':'
           - - !Ref 'AWS::StackName'
-            - 'PrivateSubnetOne' 
+            - 'PrivateSubnetOne'
 
   PrivateSubnetTwo:
     Description: A reference to the private subnet in the 2nd Availability Zone
     Value: !Ref PrivateSubnetTwo
     Export:
-      Name: 
+      Name:
         Fn::Join:
           - ':'
           - - !Ref 'AWS::StackName'
-            - 'PrivateSubnetTwo' 
-
-  ApplicationHostSecurityGroup:
-    Description: A security group used to allow Application hosts access to SSM within the private subnet
-    Value: !Ref 'ApplicationHostSecurityGroup'
-    Export:
-      Name: 
-        Fn::Join:
-          - ':'
-          - - !Ref 'AWS::StackName'
-            - 'ApplicationHostSecurityGroup'
+            - 'PrivateSubnetTwo'
 
   FargateContainerSecurityGroup:
     Description: A security group used to allow Fargate containers to receive traffic
     Value: !Ref 'FargateContainerSecurityGroup'
     Export:
-      Name: 
+      Name:
         Fn::Join:
           - ':'
           - - !Ref 'AWS::StackName'
             - 'FargateContainerSecurityGroup'
 
-  PublicListener:
-    Description: The ARN of the public load balancer's Listener
-    Value: !Ref PublicLoadBalancerListener
+  Listener:
+    Description: The ARN of the load balancer's Listener
+    Value: !Ref LoadBalancerListener
     Export:
-      Name: 
+      Name:
         Fn::Join:
           - ':'
           - - !Ref 'AWS::StackName'
-            - 'PublicListener'
-
-  ExternalUrl:
-    Description: The url of the external load balancer
-    Value: 
-      Fn::Join:
-        - ''
-        - - 'http://'
-          - !GetAtt 'PublicLoadBalancer.DNSName'
-    Export:
-      Name: 
-        Fn::Join:
-          - ':'
-          - - !Ref 'AWS::StackName'
-            - 'ExternalUrl'    
+            - 'Listener'
 
   ECSRole:
     Description: The ARN of the ECS role
     Value: !GetAtt 'ECSRole.Arn'
     Export:
-      Name: 
+      Name:
         Fn::Join:
           - ':'
           - - !Ref 'AWS::StackName'
@@ -582,8 +383,8 @@ Outputs:
     Description: The ARN of the ECS role
     Value: !GetAtt 'ECSTaskExecutionRole.Arn'
     Export:
-      Name: 
-        Fn::Join: 
+      Name:
+        Fn::Join:
           - ':'
           - - !Ref 'AWS::StackName'
             - 'ECSTaskExecutionRole'
@@ -591,7 +392,7 @@ Outputs:
     Description: The name of the ECS cluster
     Value: !Ref 'ECSCluster'
     Export:
-      Name: 
+      Name:
         Fn::Join:
           - ':'
           - - !Ref 'AWS::StackName'

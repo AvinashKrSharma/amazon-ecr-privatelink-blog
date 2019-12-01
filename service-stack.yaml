@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Deploy a service on AWS Fargate, private cluster, public access ALB 
+Description: Deploy a service on AWS Fargate, private cluster
 Parameters:
   AccountNetworkingStackName:
     Type: String
@@ -21,7 +21,7 @@ Parameters:
   ContainerCpu:
     Type: Number
     Default: 256
-    Description: How much CPU to give the container. 1024 is 1 CPU 
+    Description: How much CPU to give the container. 1024 is 1 CPU
   ContainerMemory:
     Type: Number
     Default: 512
@@ -29,7 +29,7 @@ Parameters:
   Path:
     Type: String
     Default: "*"
-    Description: A path on the public load balancer that this service
+    Description: A path on the load balancer that this service
                  should be connected to. Use * to send all load balancer
                  traffic to this service.
   Priority:
@@ -57,7 +57,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub ${AccountNetworkingStackName}-service-${ServiceName}
- 
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -117,8 +117,9 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       HealthCheckIntervalSeconds: 6
-      HealthCheckPath: /
+      HealthCheckPath: /status
       HealthCheckProtocol: HTTP
+      HealthCheckPort: 8080
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
       TargetType: ip
@@ -139,5 +140,5 @@ Resources:
         - Field: path-pattern
           Values: [!Ref 'Path']
       ListenerArn:
-        Fn::ImportValue: !Sub ${AccountNetworkingStackName}:PublicListener
+        Fn::ImportValue: !Sub ${AccountNetworkingStackName}:Listener
       Priority: !Ref 'Priority'
